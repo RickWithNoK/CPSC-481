@@ -1,6 +1,9 @@
 # Import BayesNet for building the Bayesian network and enumeration_ask for exact inference
 from probability4e import BayesNet, enumeration_ask
 
+# Shorthand for True and False to improve readability
+T, F = True, False 
+
 # Diagnostics class encapsulates the Asia Bayesian network and exposes a diagnose method
 class Diagnostics:
 
@@ -15,19 +18,19 @@ class Diagnostics:
             # Root node: prior probability of 50% that the patient is a smoker
             ('smoking', '', 0.5),
             # Tuberculosis depends on Asia visit: 5% chance if visited, 1% if not
-            ('tuberculosis', 'asia', {True: 0.05, False: 0.01}),
+            ('tuberculosis', 'asia', {T: 0.05, F: 0.01}),
             # Lung cancer depends on smoking: 10% chance if smoker, 1% if not
-            ('lung_cancer', 'smoking', {True: 0.1, False: 0.01}),
+            ('lung_cancer', 'smoking', {T: 0.1, F: 0.01}),
             # Bronchitis depends on smoking: 60% chance if smoker, 30% if not
-            ('bronchitis', 'smoking', {True: 0.6, False: 0.3}),
+            ('bronchitis', 'smoking', {T: 0.6, F: 0.3}),
             # 'either' is True if tuberculosis OR lung cancer is present (logical OR gate):
             # True whenever at least one of the two parents is True, False only if both are False
-            ('either', 'tuberculosis lung_cancer', {(True, True): 1.0, (True, False): 1.0, (False, True): 1.0, (False, False): 0.0}),
+            ('either', 'tuberculosis lung_cancer', {(T, T): 1.0, (T, F): 1.0, (F, T): 1.0, (F, F): 0.0}),
             # X-ray result depends on 'either': 99% abnormal if either disease present, 5% false-positive if not
-            ('xray', 'either', {True: 0.99, False: 0.05}),
+            ('xray', 'either', {T: 0.99, F: 0.05}),
             # Dyspnea (shortness of breath) depends on both 'either' and bronchitis
             # Tuple keys are (either, bronchitis); probability of dyspnea given each combination
-            ('dyspnea', 'either bronchitis', {(True, True): 0.9, (True, False): 0.7, (False, True): 0.8, (False, False): 0.1})
+            ('dyspnea', 'either bronchitis', {(T, T): 0.9, (T, F): 0.7, (F, T): 0.8, (F, F): 0.1})
         ])
 
     def diagnose(self, visit_to_asia, smoking, xray_result, dyspnea):
