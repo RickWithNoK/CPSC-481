@@ -72,7 +72,7 @@ class Diagnostics:
         # Collect the three posterior probabilities into a labelled dictionary
         probabilities = {
             "TB": tb_prob,
-            "Lung Cancer": cancer_prob,
+            "Cancer": cancer_prob,
             "Bronchitis": bronchitis_prob
         }
 
