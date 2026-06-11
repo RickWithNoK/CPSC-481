@@ -5,17 +5,29 @@ import json
 
 T, F = True, False
 
+# Diagnostics class uses an LLM to solve the Asia Bayesian network diagnosis problem
 class Diagnostics:
 
     def __init__(self):
+        # Load environment variables from .env file (API key is stored there, not in code)
         load_dotenv()
+        # Initialize the OpenAI client with the API key from the environment
         self.client = OpenAI(
             api_key=os.getenv("API_KEY"),
             base_url="https://ellm.nrp-nautilus.io/v1"
         )
-        
+
     def diagnose(self, visit_to_asia, smoking, xray_result, dyspnea):
 
+        # Print the received evidence before building the prompt
+        print("Evidence Received")
+        print(f"Visit to Asia : {visit_to_asia}")
+        print(f"Smoking       : {smoking}")
+        print(f"X-ray result  : {xray_result}")
+        print(f"Dyspnea       : {dyspnea}")
+
+        # Build the prompt with the full Bayesian network structure and the observed evidence
+        print("Building Prompt")
         prompt = f"""
         You are solving a Bayesian network diagnosis problem.
 
@@ -53,10 +65,14 @@ class Diagnostics:
         the evidence above. Return the disease with the highest posterior probability
         and its probability value.
         """
+        print("\nPrompt built successfully.")
 
+        # Send the prompt to the LLM and request structured JSON output
+        print("\nSending Request to LLM")
         response = self.client.chat.completions.create(
             model="gpt-oss",
             messages=[{"role": "user", "content": prompt}],
+            # Structured output schema enforces the exact response format
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -79,7 +95,19 @@ class Diagnostics:
                 }
             }
         )
+        print("\nResponse received.")
 
-        result = json.loads(response.choices[0].message.content)
+        # Parse the structured JSON response from the LLM
+        print("Parsing LLM Response")
+        raw = response.choices[0].message.content
+        print(f"Raw response: {raw}")
+        result = json.loads(raw)
 
-        return [result["disease"], result["probability"]]
+        # Extract the most likely disease and its posterior probability
+        disease = result["disease"]
+        probability = result["probability"]
+        print("\nDiagnosis Result")
+        print(f"Most likely disease : {disease}")
+        print(f"Probability         : {probability:.4f}")
+
+        return [disease, probability]
