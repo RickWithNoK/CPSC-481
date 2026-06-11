@@ -1,84 +1,85 @@
-# Import BayesNet for building the Bayesian network and enumeration_ask for exact inference
-from probability4e import BayesNet, enumeration_ask
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+import json
 
-# Shorthand for True and False to improve readability
-T, F = True, False 
+T, F = True, False
 
-# Diagnostics class encapsulates the Asia Bayesian network and exposes a diagnose method
 class Diagnostics:
 
     def __init__(self):
-        # Build the Bayesian network using the classic "Asia" network structure.
-        # Each tuple is (node_name, parent_names, CPT) where CPT is:
-        #   - a float for root nodes (prior probability of being True)
-        #   - a dict mapping parent truth-value(s) to P(node=True | parents)
-        self.net = BayesNet([
-            # Root node: prior probability of 1% that the patient visited Asia
-            ('asia', '', 0.01),
-            # Root node: prior probability of 50% that the patient is a smoker
-            ('smoking', '', 0.5),
-            # Tuberculosis depends on Asia visit: 5% chance if visited, 1% if not
-            ('tuberculosis', 'asia', {T: 0.05, F: 0.01}),
-            # Lung cancer depends on smoking: 10% chance if smoker, 1% if not
-            ('lung_cancer', 'smoking', {T: 0.1, F: 0.01}),
-            # Bronchitis depends on smoking: 60% chance if smoker, 30% if not
-            ('bronchitis', 'smoking', {T: 0.6, F: 0.3}),
-            # 'either' is True if tuberculosis OR lung cancer is present (logical OR gate):
-            # True whenever at least one of the two parents is True, False only if both are False
-            ('either', 'tuberculosis lung_cancer', {(T, T): 1.0, (T, F): 1.0, (F, T): 1.0, (F, F): 0.0}),
-            # X-ray result depends on 'either': 99% abnormal if either disease present, 5% false-positive if not
-            ('xray', 'either', {T: 0.99, F: 0.05}),
-            # Dyspnea (shortness of breath) depends on both 'either' and bronchitis
-            # Tuple keys are (either, bronchitis); probability of dyspnea given each combination
-            ('dyspnea', 'either bronchitis', {(T, T): 0.9, (T, F): 0.7, (F, T): 0.8, (F, F): 0.1})
-        ])
-
+        load_dotenv()
+        self.client = OpenAI(
+            api_key=os.getenv("API_KEY"),
+            base_url="https://ellm.nrp-nautilus.io/v1"
+        )
+        
     def diagnose(self, visit_to_asia, smoking, xray_result, dyspnea):
-        # Build the evidence dictionary from the user-provided symptom/observation strings
 
-        evidence = {}
+        prompt = f"""
+        You are solving a Bayesian network diagnosis problem.
 
-        # Map the Asia visit answer to a boolean and add it to evidence
-        if visit_to_asia.lower() == 'yes':
-            evidence['asia'] = True
-        elif visit_to_asia.lower() == 'no':
-            evidence['asia'] = False
+        Use this Bayesian network:
 
-        # Map the smoking answer to a boolean and add it to evidence
-        if smoking.lower() == 'yes':
-            evidence['smoking'] = True
-        elif smoking.lower() == 'no':
-            evidence['smoking'] = False
+        P(asia=T) = 0.01
+        P(smoking=T) = 0.50
 
-        # Map the X-ray result to a boolean (abnormal = True) and add it to evidence
-        if xray_result.lower() == 'abnormal':
-            evidence['xray'] = True
-        elif xray_result.lower() == 'normal':
-            evidence['xray'] = False
+        P(tuberculosis=T | asia=T) = 0.05
+        P(tuberculosis=T | asia=F) = 0.01
 
-        # Map the dyspnea symptom to a boolean (present = True) and add it to evidence
-        if dyspnea.lower() == 'present':
-            evidence['dyspnea'] = True
-        elif dyspnea.lower() == 'absent':
-            evidence['dyspnea'] = False
+        P(cancer=T | smoking=T) = 0.10
+        P(cancer=T | smoking=F) = 0.01
 
-        # Use exact inference (enumeration) to compute P(tuberculosis=True | evidence)
-        tb_prob = enumeration_ask('tuberculosis', evidence, self.net)[True]
-        # Use exact inference to compute P(lung_cancer=True | evidence)
-        cancer_prob = enumeration_ask('lung_cancer', evidence, self.net)[True]
-        # Use exact inference to compute P(bronchitis=True | evidence)
-        bronchitis_prob = enumeration_ask('bronchitis', evidence, self.net)[True]
+        P(bronchitis=T | smoking=T) = 0.60
+        P(bronchitis=T | smoking=F) = 0.30
 
-        # Collect the three posterior probabilities into a labelled dictionary
-        probabilities = {
-            "TB": tb_prob,
-            "Cancer": cancer_prob,
-            "Bronchitis": bronchitis_prob
-        }
+        either = tuberculosis OR cancer
 
-        # Find the disease with the highest posterior probability
-        disease = max(probabilities, key=probabilities.get)
+        P(xray=abnormal | either=T) = 0.99
+        P(xray=abnormal | either=F) = 0.05
 
-        # Return the most likely disease and its probability as a two-element list
-        return [disease, probabilities[disease]]
+        P(dyspnea=present | bronchitis=T, either=T) = 0.90
+        P(dyspnea=present | bronchitis=T, either=F) = 0.80
+        P(dyspnea=present | bronchitis=F, either=T) = 0.70
+        P(dyspnea=present | bronchitis=F, either=F) = 0.10
 
+        Evidence:
+        visit_to_asia={visit_to_asia}
+        smoking={smoking}
+        xray_result={xray_result}
+        dyspnea={dyspnea}
+
+        Compute the posterior probability of each disease (TB, Cancer, Bronchitis) given
+        the evidence above. Return the disease with the highest posterior probability
+        and its probability value.
+        """
+
+        response = self.client.chat.completions.create(
+            model="gpt-oss",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "diagnosis_result",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "disease": {
+                                "type": "string",
+                                "enum": ["TB", "Cancer", "Bronchitis"]
+                            },
+                            "probability": {
+                                "type": "number"
+                            }
+                        },
+                        "required": ["disease", "probability"],
+                        "additionalProperties": False
+                    }
+                }
+            }
+        )
+
+        result = json.loads(response.choices[0].message.content)
+
+        return [result["disease"], result["probability"]]
